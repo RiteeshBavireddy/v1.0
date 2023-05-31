@@ -38,37 +38,45 @@ contract BasicDutchAuction {
         startingBlock = block.number;
         auctionEnd = false;
     }
-
-    function getCurrentPrice() public view returns (uint256) {
-        if (block.number > startingBlock + numBlocksAuctionOpen) {
-            return 0;
-        }
-        return initialPrice - ((block.number - startingBlock) * offerPriceDecrement);
+function getCurrentPrice() public view returns (uint256) {
+    if (block.number > startingBlock + numBlocksAuctionOpen) {
+        return 0;
     }
+    return initialPrice - ((block.number - startingBlock) * offerPriceDecrement);
+}
+    // function getCurrentPrice() public view returns (uint256) {
+    //     if (block.number > startingBlock + numBlocksAuctionOpen) {
+    //         return 0;
+    //     }
+    //     return initialPrice - ((block.number - startingBlock) * offerPriceDecrement);
+    // }
 
     function bid() public payable onlyBeforeEnd onlyWhileOpen {
-        require(msg.sender != owner, "Owner cannot bid");
-        uint256 currentPrice = getCurrentPrice();
-        require(msg.value >= currentPrice, "Bid is below the current price");
-        require(currentPrice >= reservePrice, "Bid is below the reserve price");
+    require(msg.sender != owner, "Owner cannot bid");
+    uint256 currentPrice = getCurrentPrice();
+    require(msg.value >= currentPrice, "Bid is below the current price");
+    require(currentPrice >= reservePrice, "Bid is below the reserve price");
 
-        // Ensure that the bidder has enough balance
-        require(msg.sender.balance >= msg.value, "Insufficient balance for bid");
+    // Ensure that the bidder has enough balance in their external account
+    // require(address(msg.sender).balance >= msg.value, "Insufficient balance for bid");
+    require(msg.sender.balance >= msg.value, "Insufficient balance for bid");
 
-        if (msg.value > currentPrice) {
-            payable(msg.sender).transfer(msg.value - currentPrice);
-        }
 
-        // Ensure the owner has enough balance to receive the funds
-        require(owner.balance + currentPrice >= owner.balance, "Owner cannot receive funds");
-
-        owner.transfer(currentPrice);
-        auctionEnd = true;
-        winningBid = currentPrice;
-        winningBidder = payable(msg.sender);
-
-        emit AuctionEnded(winningBidder, winningBid);
+    if (msg.value > currentPrice) {
+        payable(msg.sender).transfer(msg.value - currentPrice);
     }
+
+    // Ensure the owner has enough balance to receive the funds
+    require(address(owner).balance + currentPrice >= address(owner).balance, "Owner cannot receive funds");
+
+    payable(owner).transfer(currentPrice);
+    auctionEnd = true;
+    winningBid = currentPrice;
+    winningBidder = payable(msg.sender);
+
+    emit AuctionEnded(winningBidder, winningBid);
+}
+
 
     function endAuction() public onlyOwner {
         auctionEnd = true;

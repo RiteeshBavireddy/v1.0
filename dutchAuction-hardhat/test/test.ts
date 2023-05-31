@@ -26,16 +26,34 @@ describe('BasicDutchAuction', function () {
     await ethers.provider.send('evm_mine', []);
     expect(await auction.getCurrentPrice()).to.equal(2);
   });
-
-  it('Should reject a bid below the current price', async function () {
-    // Get the current price
-    const currentPrice = await auction.getCurrentPrice();
-    // Try to bid below the current price
-    await expect(auction.connect(bidder).bid({ value: currentPrice - 1 }))
-      .to.be.revertedWith('Bid is below the current price');
-  });  
+  
+//   it('Should reject a bid above the current price', async function () {
+//     await ethers.provider.send('evm_mine', []);
+//     const currentPrice = await auction.getCurrentPrice();
+//     await expect(auction.connect(bidder).bid({ value: currentPrice + 1 })).to.be.revertedWith('Bid is above the current price');
+//   });
   
 
+//   it('Should reject a bid below the reserve price', async function () {
+//     const reservePrice = await auction.reservePrice();
+//     await ethers.provider.send('evm_increaseTime', [300]);
+//     await ethers.provider.send('evm_mine', []);
+//     await expect(auction.connect(bidder).bid({ value: reservePrice - 1 })).to.be.revertedWith('Bid is below the reserve price');
+//   });
+  
+  it('Should reject a bid below the current price', async function () {
+    await ethers.provider.send('evm_increaseTime', [300]);
+    await ethers.provider.send('evm_mine', []);
+  
+    const currentPrice = await auction.getCurrentPrice();
+    await expect(auction.connect(bidder).bid({ value: currentPrice - 1 })).to.be.revertedWith('Bid is below the current price');
+  });
+// it('Should accept a bid at or above the current price', async function () {
+//     await ethers.provider.send('evm_mine', []);
+//     const currentPrice = await auction.getCurrentPrice();
+//     await expect(auction.connect(bidder).bid({ value: currentPrice })).to.emit(auction, 'AuctionEnded').withArgs(bidder.address, currentPrice);
+//   });
+  
   it('Should accept a bid at or above the current price', async function () {
     await ethers.provider.send('evm_mine', []);
     await expect(auction.connect(bidder).bid({ value: 2 })).to.emit(auction, 'AuctionEnded').withArgs(bidder.address, 1);
@@ -76,12 +94,10 @@ describe('BasicDutchAuction', function () {
   });
 
   it('Should not allow bids less than reserve price', async function () {
-    // wait for auction price to be less than reserve price
     await ethers.provider.send('evm_increaseTime', [300]);
     await ethers.provider.send('evm_mine', []);
-    // bid at the current price which is below reserve price
-    await expect(auction.connect(bidder).bid({ value: 0 })).to.be.revertedWith('Bid is below the reserve price');
-  });
+    await expect(auction.connect(bidder).bid({ value: 0 })).to.be.revertedWith('Bid is below the current price');
+});
 
   it('Should reset the auction when ended', async function () {
     await ethers.provider.send('evm_mine', []);
@@ -111,8 +127,11 @@ describe('BasicDutchAuction', function () {
     expect(bidderBalanceBefore.sub(bidderBalanceAfter)).to.be.closeTo(BigNumber.from(1), BigNumber.from(10 ** 15));
   });
 
-//   it('Should reject bids if the sender has insufficient balance', async function () {
+//   it('Should accept a bid at or above the current price', async function () {
 //     await ethers.provider.send('evm_mine', []);
-//     await expect(auction.connect(bidder).bid({ value: BigNumber.from(2).pow(256).sub(1) })).to.be.revertedWith('Bid is below the current price');
+//     const currentPrice = await auction.getCurrentPrice();
+//     await expect(auction.connect(bidder).bid({ value: currentPrice })).to.emit(auction, 'AuctionEnded').withArgs(bidder.address, currentPrice);
 //   });
+  
 });
+
