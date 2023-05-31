@@ -24,6 +24,11 @@ contract BasicDutchAuction {
         _;
     }
 
+    modifier onlyWhileOpen {
+        require(block.number <= startingBlock + numBlocksAuctionOpen, "Auction is not open");
+        _;
+    }
+
     constructor(uint256 _reservePrice, uint256 _numBlocksAuctionOpen, uint256 _offerPriceDecrement) {
         owner = payable(msg.sender);
         reservePrice = _reservePrice;
@@ -34,26 +39,44 @@ contract BasicDutchAuction {
         auctionEnd = false;
     }
 
-    function getCurrentPrice() public view returns(uint256) {
-        if(block.number > startingBlock + numBlocksAuctionOpen) {
+    function getCurrentPrice() public view returns (uint256) {
+        if (block.number > startingBlock + numBlocksAuctionOpen) {
             return 0;
         }
         return initialPrice - ((block.number - startingBlock) * offerPriceDecrement);
     }
 
-    function bid() public payable onlyBeforeEnd {
+    function bid() public payable onlyBeforeEnd onlyWhileOpen {
+        require(msg.sender != owner, "Owner cannot bid");
         uint256 currentPrice = getCurrentPrice();
-        require(msg.value >= currentPrice, "Bid is not high enough");
+        require(msg.value >= currentPrice, "Bid is below the current price");
+        require(currentPrice >= reservePrice, "Bid is below the reserve price");
 
-        owner.transfer(msg.value);
+        // Ensure that the bidder has enough balance
+        require(msg.sender.balance >= msg.value, "Insufficient balance for bid");
+
+        if (msg.value > currentPrice) {
+            payable(msg.sender).transfer(msg.value - currentPrice);
+        }
+
+        // Ensure the owner has enough balance to receive the funds
+        require(owner.balance + currentPrice >= owner.balance, "Owner cannot receive funds");
+
+        owner.transfer(currentPrice);
         auctionEnd = true;
-        winningBid = msg.value;
+        winningBid = currentPrice;
         winningBidder = payable(msg.sender);
 
         emit AuctionEnded(winningBidder, winningBid);
     }
 
     function endAuction() public onlyOwner {
-        selfdestruct(owner);
+        auctionEnd = true;
+        winningBid = 0;
+        winningBidder = payable(address(0));
+        reservePrice = 0;
+
+        emit AuctionEnded(owner, 0);
     }
 }
+
