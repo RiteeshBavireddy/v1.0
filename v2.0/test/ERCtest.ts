@@ -3,6 +3,46 @@ import { assert, expect } from "chai";
 import 'mocha';
 
 import { Contract, ContractFactory, Signer } from "ethers";
+import {  MockERC721 } from "../typechain-types";
+
+// describe("MockERC721", function() {
+//   let ERC721Token: ContractFactory;
+//   let ERC721Auction: ContractFactory;
+//   let erc721Token: Contract;
+//   let erc721Auction: Contract;
+//   let owner: Signer;
+//   let bidder1: Signer;
+//   let bidder2: Signer;
+// beforeEach(async function() {
+//   //...
+  
+//   // Deploy the ERC721 token
+//   ERC721Token = await ethers.getContractFactory("MockERC721");
+//   erc721Token = await ERC721Token.connect(owner).deploy("My NFT", "NFT");
+//   await erc721Token.deployed();
+//   await erc721Token.mint(await owner.getAddress(), 1);
+  
+//   ERC721Auction = await ethers.getContractFactory("MockERC721");
+//     erc721Auction = await ERC721Auction.connect(owner).deploy(
+//       erc721Token.address,
+//       1,
+//       ethers.utils.parseEther("1"),
+//       10,
+//       ethers.utils.parseEther("0.1")
+//     );
+//     await erc721Auction.deployed();
+//   });
+  
+
+
+// describe("mint", function(){
+//   it("Should mint a token to an address", async function() {
+//     await erc721Token.connect(owner).mint(await bidder1.getAddress(), 2);
+//     const ownerOfToken = await erc721Token.ownerOf(2);
+//     expect(ownerOfToken).to.equal(await bidder1.getAddress());
+//   });
+// });
+// });
 
 describe("ERC721Auction", function() {
   let ERC721Token: ContractFactory;
@@ -35,6 +75,7 @@ describe("ERC721Auction", function() {
     await erc721Auction.deployed();
   });
 
+  
   describe("Construction", function() {
     it("Should correctly initialize constructor variables", async function() {
       expect(await erc721Auction.nftToken()).to.equal(erc721Token.address);
@@ -44,7 +85,6 @@ describe("ERC721Auction", function() {
       expect(await erc721Auction.offerPriceDecrement()).to.equal(ethers.utils.parseEther("0.1"));
       expect(await erc721Auction.getCurrentPrice()).to.equal(ethers.utils.parseEther("2"));
       expect(await erc721Auction.auctionEnded()).to.be.false;
-      // expect(await erc721Auction.startPrice).to.equal(ethers.utils.parseEther("2"));
 
     });
 
@@ -83,100 +123,54 @@ describe("ERC721Auction", function() {
         )
       ).to.be.revertedWith("Offer price decrement should be greater than 0");
     });
+    it("Should emit the correct event on creation", async function() {
+      const auction = await ERC721Auction.deploy(
+          erc721Token.address,
+          1,
+          ethers.utils.parseEther("1"),
+          10,
+          ethers.utils.parseEther("0.1")
+      );
+      await expect(auction.deployTransaction)
+          .to.emit(auction, 'AuctionStarted')
+          .withArgs(ethers.utils.parseEther("2"));
+  });
+  
   });
 
-  describe("endAuction", function() {
-    it("Should handle bids equal to the current price", async function() {
+  
+  describe("Bid", function() {
+    it("Should refund the previous highest bidder when a higher bid is placed", async function() {
       await erc721Token.connect(owner).approve(erc721Auction.address, 1);
       await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
-
-      const auctionEnded = await erc721Auction.auctionEnded();
-      expect(auctionEnded).to.be.true;
-      const tokenOwner = await erc721Token.ownerOf(1);
-      expect(tokenOwner).to.equal(await bidder1.getAddress());
+      await expect(erc721Auction.connect(bidder2).bid({ value: ethers.utils.parseEther("3") }))
+          .to.emit(erc721Auction, 'BidRefunded')
+          .withArgs(await bidder1.getAddress(), ethers.utils.parseEther("2"));
   });
-
-  it("Should revert if the auction has not received any bids", async function() {
-    await erc721Token.connect(owner).approve(erc721Auction.address, 1);
-
-    await expect(
-      erc721Auction.connect(owner).endAuction()
-    ).to.be.revertedWith("No bids received");
+  
+  it("Should not refund the highest bidder when a lower bid is placed", async function() {
+      await erc721Token.connect(owner).approve(erc721Auction.address, 1);
+      await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
+      await expect(erc721Auction.connect(bidder2).bid({ value: ethers.utils.parseEther("1.5") }))
+          .to.be.revertedWith('Bid is lower than the reserve price');
   });
-
-  // it("Should fail if the auction end is forced prematurely", async function() {
-  //   await erc721Token.connect(owner).approve(erc721Auction.address, 1);
-  //   await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
-
-  //   await expect(
-  //     erc721Auction.connect(owner).endAuction()
-  //   ).to.be.revertedWith("Auction has not finished yet");
-  // });
-
-  it("Should revert when trying to end an already ended auction", async function() {
-    await erc721Token.connect(owner).approve(erc721Auction.address, 1);
-    await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
-
-    await expect(
-      erc721Auction.connect(owner).endAuction()
-    ).to.be.revertedWith("Auction has already ended");
-  });
-
-  it("Should transfer funds to the seller and transfer the NFT to the highest bidder", async function() {
-    // Approve the ERC721 token for the auction contract
-    await erc721Token.connect(owner).approve(erc721Auction.address, 1);
-
-    // Place a bid from bidder1
-    await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("1.9") });
-
-    // Mine some blocks and do not end the auction
-    for (let i = 0; i < 5; i++) {
-      await ethers.provider.send("evm_mine", []);
-    }
-
-    // Place a higher bid from bidder2
-    await erc721Auction.connect(bidder2).bid({ value: ethers.utils.parseEther("1.8") });
-
-    // Now end the auction
-    await erc721Auction.connect(owner).endAuction();
-
-    const tokenOwner = await erc721Token.ownerOf(1);
-    expect(tokenOwner).to.equal(await bidder2.getAddress());
-    const auctionEnded = await erc721Auction.auctionEnded();
-    expect(auctionEnded).to.be.true;
-  });
-//     it("Should transfer funds to the seller and transfer the NFT to the highest bidder", async function() {
-//       let isAuctionEnded = await erc721Auction.auctionEnded();
-//   if (isAuctionEnded) {
-//     throw new Error("Auction ended prematurely");
-//   }
-
-//   //     const isAuctionEnded = await erc721Auction.auctionEnded();
-//   // assert(!isAuctionEnded, "Auction should not have ended");
-
-//       await erc721Token.connect(owner).approve(erc721Auction.address, 1);
-//       await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
+  
     
-//       await ethers.provider.send("evm_increaseTime", [11]); // Increase time to allow the auction to end
-//       await ethers.provider.send("evm_mine", []);
+    it('Should fail to transfer funds when owner places a bid', async () => {
+      const initialBalanceOwner = await owner.getBalance();
+      const bidAmount = ethers.utils.parseEther('2.0');
     
-//       const ownerBalanceBefore = await ethers.provider.getBalance(await owner.getAddress());
-//       const highestBidderBalanceBefore = await ethers.provider.getBalance(await bidder1.getAddress());
+      // Place a bid from the owner's address
+      await expect(erc721Auction.connect(owner).bid({ value: bidAmount }))
+        .to.be.revertedWith('Owner cannot place a bid');
     
-//       await erc721Auction.connect(owner).endAuction();
+      // Get the final balance of the owner
+      const finalBalanceOwner = await owner.getBalance();
     
-//       const ownerBalanceAfter = await ethers.provider.getBalance(await owner.getAddress());
-//       const highestBidderBalanceAfter = await ethers.provider.getBalance(await bidder1.getAddress());
-    
-//       expect(ownerBalanceAfter.sub(ownerBalanceBefore)).to.equal(ethers.utils.parseEther("2"));
-//       expect(highestBidderBalanceAfter.sub(highestBidderBalanceBefore)).to.equal(ethers.utils.parseEther("0"));
-    
-//       const tokenOwner = await erc721Token.ownerOf(1);
-//       expect(tokenOwner).to.equal(await bidder1.getAddress());
-//     });
-});
+      // Compare balances within a tolerance of 0.01 ETH
+      expect(finalBalanceOwner).to.be.approximately(initialBalanceOwner, ethers.utils.parseEther('0.01'));
+    });
 
-  describe("Bid", function() {
 
     it("Should revert for bids from the contract owner", async function() {
       await erc721Token.connect(owner).approve(erc721Auction.address, 1);
@@ -194,81 +188,15 @@ describe("ERC721Auction", function() {
       ).to.be.revertedWith("Bid is lower than the reserve price");
     });
 
-    it("Should not allow bids after the auction has ended", async function() {
-      await erc721Token.connect(owner).approve(erc721Auction.address, 1);
-      await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
-      await expect(
-        erc721Auction.connect(bidder2).bid({ value: ethers.utils.parseEther("2") })
-      ).to.be.revertedWith("Auction has ended");
-    });
+  //   it("Should handle bids equal to the current price", async function() {
+  //     await erc721Token.connect(owner).approve(erc721Auction.address, 1);
+  //     await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
 
-    it("Should handle bids equal to the current price", async function() {
-      await erc721Token.connect(owner).approve(erc721Auction.address, 1);
-      await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
-
-      const auctionEnded = await erc721Auction.auctionEnded();
-      expect(auctionEnded).to.be.true;
-      const tokenOwner = await erc721Token.ownerOf(1);
-      expect(tokenOwner).to.equal(await bidder1.getAddress());
-  });
-
-// it("Should reduce the current price after some blocks and refund the previous highest bidder", async function() {
-//   await erc721Token.connect(owner).approve(erc721Auction.address, 1);
-
-//   // Bid from bidder1
-//   await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
-
-//   // Mine some blocks
-//   for (let i = 0; i < 10; i++) {
-//     await ethers.provider.send("evm_mine", []);
-//   }
-
-//   // The current price should now be lower
-//   const currentPrice = await erc721Auction.getCurrentPrice();
-//   assert(
-//     currentPrice.eq(ethers.utils.parseEther("1")),
-//     `Expected price: ${ethers.utils.formatEther(ethers.utils.parseEther("1"))}, found: ${ethers.utils.formatEther(currentPrice)}`
-//   );
-
-//   // Bidder2 bids now
-//   await erc721Auction.connect(bidder2).bid({ value: ethers.utils.parseEther("1") });
-
-//   // Check refund to bidder1
-//   const bidder1Balance = await bidder1.getBalance();
-//   expect(bidder1Balance).to.equal(ethers.utils.parseEther("1"));
-// });
-
-it("Should reduce the current price after some blocks and refund the previous highest bidder", async function() {
-  await erc721Token.connect(owner).approve(erc721Auction.address, 1);
-
-  // Bid from bidder1 equal to the starting price
-  await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
-
-  // Mine some blocks
-  for (let i = 0; i < 10; i++) {
-    await ethers.provider.send("evm_mine", []);
-  }
-
-  const currentBlockNumber = await ethers.provider.getBlockNumber();
-  console.log("Current block number: ", currentBlockNumber);
-
-  // The current price should now be lower
-  const currentPrice = await erc721Auction.getCurrentPrice();
-  console.log("Current price: ", ethers.utils.formatEther(currentPrice));
-
-  assert(
-    currentPrice.lt(ethers.utils.parseEther("2")),
-    `Expected price lower than starting price, found: ${ethers.utils.formatEther(currentPrice)}`
-  );
-
-  // Bidder2 bids now
-  await erc721Auction.connect(bidder2).bid({ value: ethers.utils.parseEther("1.5") });
-
-  // Check refund to bidder1
-  const bidder1Balance = await bidder1.getBalance();
-  expect(bidder1Balance).to.be.above(ethers.utils.parseEther("0")); // refund the previous bid as it exceeded the current price
-});
-
+  //     const auctionEnded = await erc721Auction.auctionEnded();
+  //     expect(auctionEnded).to.be.false;
+  //     const tokenOwner = await erc721Token.ownerOf(1);
+  //     expect(tokenOwner).to.equal(await bidder1.getAddress());
+  // });
 
   it("Should not allow bids when the auction is closed", async function() {
   const currentBlockNumber = await ethers.provider.getBlockNumber();
@@ -291,13 +219,58 @@ it("Should reduce the current price after some blocks and refund the previous hi
       ).to.be.revertedWith("Bid is lower than the reserve price");
     });
 
-    it("Should end the auction when a valid bid is placed", async function() {
+    it("Should not end the auction if the bid is not enough", async function() {
+      await erc721Token.connect(owner).approve(erc721Auction.address, 1);
+      await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("3") });
+      const auctionEnded = await erc721Auction.auctionEnded();
+      expect(auctionEnded).to.be.false;
+  });
+
+    it("Should correctly calculate the current price based on block number", async function() {
+      // Assert initial start price
+      expect(await erc721Auction.getCurrentPrice()).to.equal(ethers.utils.parseEther("2"));
+  
+      // Advance blocks
+      await ethers.provider.send("evm_increaseTime", [1]);
+      await ethers.provider.send("evm_mine", []);
+  
+      // Check if price decreased
+      expect(await erc721Auction.getCurrentPrice()).to.equal(ethers.utils.parseEther("1.9"));
+  });
+  
+  });
+
+  describe("endAuction", function() {
+
+    it("Should emit the correct event when the auction ends", async function() {
       await erc721Token.connect(owner).approve(erc721Auction.address, 1);
       await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
-      const auctionEnded = await erc721Auction.auctionEnded();
-      expect(auctionEnded).to.be.true;
-    });
+  
+      await expect(erc721Auction.connect(owner).endAuction())
+          .to.emit(erc721Auction, 'AuctionEnded')
+          .withArgs(await bidder1.getAddress(), ethers.utils.parseEther("2"));
   });
+
+  //   it("Should handle bids equal to the current price", async function() {
+  //     await erc721Token.connect(owner).approve(erc721Auction.address, 1);
+  //     await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
+
+  //     const auctionEnded = await erc721Auction.auctionEnded();
+  //     expect(auctionEnded).to.be.false;
+  //     const tokenOwner = await erc721Token.ownerOf(1);
+  //     expect(tokenOwner).to.equal(await bidder1.getAddress());
+  // });
+
+  it("Should revert if the auction has not received any bids", async function() {
+    await erc721Token.connect(owner).approve(erc721Auction.address, 1);
+
+    await expect(
+      erc721Auction.connect(owner).endAuction()
+    ).to.be.revertedWith("No bids received");
+  });
+  
+});
+
   
 });
 

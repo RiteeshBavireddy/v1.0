@@ -11,12 +11,14 @@ contract ERC721Auction is Ownable {
     uint256 public numBlocksAuctionOpen;
     uint256 public auctionDuration;
     uint256 public offerPriceDecrement;
+    uint256 public highestBid;
     uint256 public startPrice;
     uint256 public startBlock;
     address public highestBidder;
     bool public auctionEnded;
 
     // Events for better frontend interaction
+    event BidRefunded(address indexed refundedBidder, uint256 amount);
     event AuctionStarted(uint256 startPrice);
     event NewBid(address indexed bidder, uint256 amount);
     event AuctionEnded(address indexed winner, uint256 winningBid);
@@ -27,14 +29,12 @@ contract ERC721Auction is Ownable {
         uint256 _reservePrice,
         uint256 _numBlocksAuctionOpen,
         uint256 _offerPriceDecrement
-        // uint256 _auctionDuration
         
     ){
         require(_reservePrice > 0, "Reserve price should be greater than 0");
         require(_offerPriceDecrement > 0, "Offer price decrement should be greater than 0");
 
-        // reservePrice = _reservePrice;
-        // auctionDuration = _auctionDuration;
+        
         
         require(_numBlocksAuctionOpen > 0, "Auction must be open for at least one block");
         // require(_offerPriceDecrement >= 0, "Price decrement should be non-negative");
@@ -79,36 +79,30 @@ contract ERC721Auction is Ownable {
 
         // If there's a previous bid, refund it
         if (highestBidder != address(0)) {
-            payable(highestBidder).transfer(getCurrentPrice());
+            payable(highestBidder).transfer(highestBid);
+            emit BidRefunded(highestBidder, highestBid);
         }
 
         // Update new highest bidder
+        
+        highestBid = msg.value;
         highestBidder = msg.sender;
-
-        // If a valid bid is made, end the auction immediately
-        if (msg.value >= getCurrentPrice()) {
-            endAuction();
-        }
 
         emit NewBid(msg.sender, msg.value);
     }
 
-    function endAuction() public {
-        // require(!auctionEnded, "Auction has not finished yet");
-        require(!auctionEnded, "Auction has already ended");
 
+    function endAuction() public {
+
+        require(!auctionEnded, "Auction has already ended");
         // Revert if no bids received
         require(highestBidder != address(0), "No bids received");
-
         // Transfer the funds to the seller
-        payable(owner()).transfer(getCurrentPrice());
-
+        payable(owner()).transfer(highestBid);
         // Transfer the NFT to the highest bidder
         nftToken.transferFrom(owner(), highestBidder, nftTokenId);
-
         auctionEnded = true;
-
-        emit AuctionEnded(highestBidder, getCurrentPrice());
+        emit AuctionEnded(highestBidder, highestBid);
     }
 }
 
