@@ -5,45 +5,6 @@ import 'mocha';
 import { Contract, ContractFactory, Signer } from "ethers";
 import {  MockERC721 } from "../typechain-types";
 
-// describe("MockERC721", function() {
-//   let ERC721Token: ContractFactory;
-//   let ERC721Auction: ContractFactory;
-//   let erc721Token: Contract;
-//   let erc721Auction: Contract;
-//   let owner: Signer;
-//   let bidder1: Signer;
-//   let bidder2: Signer;
-// beforeEach(async function() {
-//   //...
-  
-//   // Deploy the ERC721 token
-//   ERC721Token = await ethers.getContractFactory("MockERC721");
-//   erc721Token = await ERC721Token.connect(owner).deploy("My NFT", "NFT");
-//   await erc721Token.deployed();
-//   await erc721Token.mint(await owner.getAddress(), 1);
-  
-//   ERC721Auction = await ethers.getContractFactory("MockERC721");
-//     erc721Auction = await ERC721Auction.connect(owner).deploy(
-//       erc721Token.address,
-//       1,
-//       ethers.utils.parseEther("1"),
-//       10,
-//       ethers.utils.parseEther("0.1")
-//     );
-//     await erc721Auction.deployed();
-//   });
-  
-
-
-// describe("mint", function(){
-//   it("Should mint a token to an address", async function() {
-//     await erc721Token.connect(owner).mint(await bidder1.getAddress(), 2);
-//     const ownerOfToken = await erc721Token.ownerOf(2);
-//     expect(ownerOfToken).to.equal(await bidder1.getAddress());
-//   });
-// });
-// });
-
 describe("ERC721Auction", function() {
   let ERC721Token: ContractFactory;
   let ERC721Auction: ContractFactory;
@@ -188,15 +149,6 @@ describe("ERC721Auction", function() {
       ).to.be.revertedWith("Bid is lower than the reserve price");
     });
 
-  //   it("Should handle bids equal to the current price", async function() {
-  //     await erc721Token.connect(owner).approve(erc721Auction.address, 1);
-  //     await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
-
-  //     const auctionEnded = await erc721Auction.auctionEnded();
-  //     expect(auctionEnded).to.be.false;
-  //     const tokenOwner = await erc721Token.ownerOf(1);
-  //     expect(tokenOwner).to.equal(await bidder1.getAddress());
-  // });
 
   it("Should not allow bids when the auction is closed", async function() {
   const currentBlockNumber = await ethers.provider.getBlockNumber();
@@ -227,20 +179,33 @@ describe("ERC721Auction", function() {
   });
 
     it("Should correctly calculate the current price based on block number", async function() {
-      // Assert initial start price
       expect(await erc721Auction.getCurrentPrice()).to.equal(ethers.utils.parseEther("2"));
-  
-      // Advance blocks
       await ethers.provider.send("evm_increaseTime", [1]);
       await ethers.provider.send("evm_mine", []);
-  
-      // Check if price decreased
       expect(await erc721Auction.getCurrentPrice()).to.equal(ethers.utils.parseEther("1.9"));
   });
   
   });
 
   describe("endAuction", function() {
+
+    it("Should end auction if called by the owner", async function() {
+      await erc721Token.connect(owner).approve(erc721Auction.address, 1);
+      await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("3") });
+      expect(await erc721Auction.auctionEnded()).to.be.false;
+      await erc721Auction.connect(owner).endAuction();
+      expect(await erc721Auction.auctionEnded()).to.be.true;
+  });
+
+  it("Should fail if non-owner tries to end the auction after a bid", async function() {
+      await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("3") });
+      await expect(erc721Auction.connect(bidder1).endAuction()).to.be.revertedWith("ERC721: caller is not token owner or approved");
+      expect(await erc721Auction.auctionEnded()).to.be.false;
+  });
+  it("Should fail if no bids have been placed", async function() {
+      await expect(erc721Auction.connect(owner).endAuction()).to.be.revertedWith("No bids received");
+      expect(await erc721Auction.auctionEnded()).to.be.false;
+  });
 
     it("Should emit the correct event when the auction ends", async function() {
       await erc721Token.connect(owner).approve(erc721Auction.address, 1);
@@ -250,16 +215,6 @@ describe("ERC721Auction", function() {
           .to.emit(erc721Auction, 'AuctionEnded')
           .withArgs(await bidder1.getAddress(), ethers.utils.parseEther("2"));
   });
-
-  //   it("Should handle bids equal to the current price", async function() {
-  //     await erc721Token.connect(owner).approve(erc721Auction.address, 1);
-  //     await erc721Auction.connect(bidder1).bid({ value: ethers.utils.parseEther("2") });
-
-  //     const auctionEnded = await erc721Auction.auctionEnded();
-  //     expect(auctionEnded).to.be.false;
-  //     const tokenOwner = await erc721Token.ownerOf(1);
-  //     expect(tokenOwner).to.equal(await bidder1.getAddress());
-  // });
 
   it("Should revert if the auction has not received any bids", async function() {
     await erc721Token.connect(owner).approve(erc721Auction.address, 1);
